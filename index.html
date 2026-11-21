@@ -210,10 +210,11 @@
     <h1>🔍 AR Lens</h1>
     <p class="hint" style="margin:0">ส่องวัตถุด้วยกล้อง แล้วข้อมูลจะลอยขึ้นมาข้างๆ</p>
     <div class="steps">
-      ① <b>ส่องวัตถุ</b> เช่น ขวด แก้ว มือถือ หนังสือ → การ์ดข้อมูลจะเด้งขึ้นข้างวัตถุ<br>
-      ② <b>จีบนิ้วโป้ง + นิ้วชี้</b> ตรงปุ่ม เพื่อกด (ใช้เมาส์/แตะจอก็ได้)<br>
-      ③ กด <b>“รายละเอียดเพิ่มเติม”</b> เพื่อดูข้อมูลเชิงลึก · จีบค้างที่หัวการ์ดเพื่อลาก<br>
-      ④ กด <b>＋ สอนวัตถุ</b> เพื่อสอนให้รู้จักของของคุณเอง (ยี่ห้อ ขนาด เจ้าของบริษัท ฯลฯ)
+      ① <b>ส่องวัตถุ</b> เช่น ขวด แก้ว มือถือ หนังสือ → จะมี<b>กรอบ</b>ขึ้นรอบวัตถุที่ AI มองเห็น<br>
+      ② <b>แตะ / จีบนิ้วในกรอบ</b> ของวัตถุที่สนใจ → การ์ดข้อมูลจะเด้งขึ้นข้างวัตถุ<br>
+      ③ <b>จีบนิ้วโป้ง + นิ้วชี้</b> ตรงปุ่ม เพื่อกด (ใช้เมาส์/แตะจอก็ได้)<br>
+      ④ กด <b>“รายละเอียดเพิ่มเติม”</b> เพื่อดูข้อมูลเชิงลึก · จีบค้างที่หัวการ์ดเพื่อลาก<br>
+      ⑤ กด <b>＋ สอนวัตถุ</b> เพื่อสอนให้รู้จักของของคุณเอง (ยี่ห้อ ขนาด เจ้าของบริษัท ฯลฯ)
     </div>
     <button class="btn primary" id="btnStart" style="width:100%;padding:14px;font-size:16px">เปิดกล้อง &amp; เริ่มใช้งาน</button>
     <div id="loadMsg"></div>
@@ -593,12 +594,30 @@ function recognize(now) {
 
 /* ====================== tracks & cards ====================== */
 let tracks = [], tid = 0;
-const dismissed = new Map(); // base -> last time seen while dismissed
+
+// every detected object shows only a frame; the info card appears after the user taps / pinches inside the frame
+function trackAt(p) {
+  let best = null, ba = Infinity;
+  for (const t of tracks) {
+    if (t.dying) continue;
+    const b = rV2S(t.rv), pad = 10;
+    if (inside(p, { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 }) && b.w * b.h < ba) { ba = b.w * b.h; best = t; }
+  }
+  return best;
+}
+function openCard(t) {
+  if (t.open) { if (t.el) pressFx(t.el); return; }
+  t.open = true; t.hold = performance.now(); t.flashT = performance.now();
+  renderCard(t);
+}
+function closeCard(t) {
+  t.open = false; t.cx = null;
+  if (t.el) { const e = t.el; t.el = null; e.classList.add("out"); setTimeout(() => e.remove(), 260); }
+}
 
 function updateTracks(found, now) {
   for (const t of tracks) t.used = false;
   for (const f of found) {
-    if (dismissed.has(f.base)) { dismissed.set(f.base, now); continue; }
     const fc = center(f.r); let best = null, bd = Infinity;
     for (const t of tracks) if (!t.used && !t.dying && t.base === f.base) { const d = dist(center(t.rv), fc); if (d < bd) { bd = d; best = t; } }
     if (!best) {
@@ -606,9 +625,8 @@ function updateTracks(found, now) {
       tracks.push(best);
     }
     best.used = true; best.target = { ...f.r }; best.lastSeen = now; best.data = f;
-    renderCard(best);
+    if (best.open) renderCard(best);
   }
-  for (const [b, t] of dismissed) if (now - t > 2500) dismissed.delete(b);
 }
 
 const TH = { bottle: ["ขวด", "🍶"], cup: ["แก้ว / ถ้วย", "☕"], "wine glass": ["แก้วไวน์", "🍷"], bowl: ["ชาม", "🥣"], "cell phone": ["โทรศัพท์มือถือ", "📱"],
@@ -635,7 +653,7 @@ function renderCard(t) {
     const c = el("div", "card" + (d.kind === "coco" ? " coco" : "")); c.dataset.track = t.id;
     const head = el("div", "c-head"), tw = el("div", "c-tw");
     const x = el("button", "xbtn hit", "✕"); x.title = "ปิด";
-    x.onclick = () => { dismissed.set(t.base, performance.now()); killTrack(t); };
+    x.onclick = () => closeCard(t);
     if (d.kind === "item") {
       head.append(icoBox(d.item), tw, x);
       tw.append(el("div", "c-title", d.item.name), el("div", "c-sub", d.item.brand ? "ยี่ห้อ " + d.item.brand : "วัตถุที่สอนไว้"));
@@ -715,6 +733,15 @@ function hitAt(p) {
   }
   return null;
 }
+const UI_SEL = ".card, .pop, .topbar, .capbar, .modal, #start, .toast";
+function overUI(p) { const e = document.elementFromPoint(p.x, p.y); return !!(e && e.closest(UI_SEL)); }
+// mouse / touch: tap inside a frame to show its info card
+let mousePt = null;
+addEventListener("pointermove", (e) => { mousePt = e.pointerType === "mouse" ? { x: e.clientX, y: e.clientY } : null; });
+addEventListener("click", (e) => {
+  if (!running || (train && train.stage === "capture") || e.target.closest(UI_SEL)) return;
+  const t = trackAt({ x: e.clientX, y: e.clientY }); if (t) openCard(t);
+});
 function dragAt(p) { const e = document.elementFromPoint(p.x, p.y); return e && e.closest(".drag") && e.closest(".pop"); }
 function pressFx(btn) { btn.classList.remove("pressed"); void btn.offsetWidth; btn.classList.add("pressed"); }
 
@@ -738,7 +765,11 @@ function processHands(now) {
         let target = hitAt(st.cur);
         if (!target && st.lastHover && now - st.lastHoverT < 350 && document.contains(st.lastHover)) target = st.lastHover;
         if (target) { pressFx(target); target.click(); }
-        else { const pop = dragAt(st.cur); if (pop) { st.drag = { el: pop, ox: st.cur.x - pop.offsetLeft, oy: st.cur.y - pop.offsetTop }; pop.classList.add("dragging"); } }
+        else {
+          const pop = dragAt(st.cur);
+          if (pop) { st.drag = { el: pop, ox: st.cur.x - pop.offsetLeft, oy: st.cur.y - pop.offsetTop }; pop.classList.add("dragging"); }
+          else if (!overUI(st.cur)) { const t = trackAt(st.cur); if (t) openCard(t); }   // pinch inside a frame → show info
+        }
       } else if (st.pinch && ratio > 0.45) {                   // release
         st.pinch = false;
         if (st.drag) { st.drag.el.classList.remove("dragging"); st.drag = null; }
@@ -748,7 +779,11 @@ function processHands(now) {
         e.style.left = clamp(st.cur.x - st.drag.ox, 0, W - e.offsetWidth) + "px";
         e.style.top = clamp(st.cur.y - st.drag.oy, 50, H - 60) + "px";
       }
-      if (!st.pinch) { const h = hitAt(st.cur); if (h) hovered.add(h); }
+      if (!st.pinch) {
+        const h = hitAt(st.cur);
+        if (h) hovered.add(h);
+        else if (!overUI(st.cur)) { const t = trackAt(st.cur); if (t) t.hoverT = now; }
+      }
       // keep a card alive while a hand is reaching for it
       const ce = document.elementFromPoint(st.cur.x, st.cur.y)?.closest(".card");
       if (ce) { const t = tracks.find((x) => String(x.id) === ce.dataset.track); if (t) t.hold = now; }
@@ -787,13 +822,26 @@ function render(now) {
   }
 
   // tracks
+  let mHov = null;
+  if (mousePt && !capturing && !overUI(mousePt)) { mHov = trackAt(mousePt); if (mHov) mHov.hoverT = now; }
+  document.body.style.cursor = mHov && !mHov.el ? "pointer" : "";
   for (const t of [...tracks]) {
     const alive = now - t.lastSeen < 1300 || now - (t.hold || 0) < 600;
     if (!alive) { killTrack(t); continue; }
     if (capturing) { t.el && (t.el.style.visibility = "hidden"); continue; }
-    t.el.style.visibility = "";
     for (const k of ["x", "y", "w", "h"]) t.rv[k] = lerp(t.rv[k], t.target[k], 0.3);
     const b = rV2S(t.rv);
+    const col = t.data.kind === "item" ? "#45e3ff" : "#ffc04d";
+    const fade = now - t.lastSeen > 400 ? 0.4 : 1;
+
+    if (!t.el) {                                   // frame only — waiting to be selected
+      const hov = now - (t.hoverT || 0) < 150;
+      if (hov) { ctx.globalAlpha = 0.14 * fade; ctx.fillStyle = col; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.globalAlpha = 1; }
+      brackets(b, col, fade * (hov ? 1 : 0.75));
+      if (hov) { ctx.lineWidth = 1.5; ctx.strokeStyle = col; ctx.globalAlpha = 0.6 * fade; ctx.strokeRect(b.x, b.y, b.w, b.h); ctx.globalAlpha = 1; }
+      continue;
+    }
+    t.el.style.visibility = "";
     if (!t.size) t.size = { w: t.el.offsetWidth, h: t.el.offsetHeight };
     const { w: cw, h: ch } = t.size, gap = 26;
     let side = t.side || "R";
@@ -808,8 +856,8 @@ function render(now) {
     t.cx = lerp(t.cx, tx, k); t.cy = lerp(t.cy, ty, k);
     t.el.style.transform = `translate3d(${t.cx.toFixed(1)}px, ${t.cy.toFixed(1)}px, 0)`;
 
-    const col = t.data.kind === "item" ? "#45e3ff" : "#ffc04d";
-    const fade = now - t.lastSeen > 400 ? 0.4 : 1;
+    const fl = clamp(1 - (now - (t.flashT || 0)) / 500, 0, 1);   // flash when just selected
+    if (fl) { ctx.globalAlpha = 0.3 * fl; ctx.fillStyle = col; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.globalAlpha = 1; }
     brackets(b, col, fade);
     // leader line
     const ax = side === "R" ? b.x + b.w : b.x, ay = clamp(t.cy + 30, b.y, b.y + b.h);
