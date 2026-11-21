@@ -26,7 +26,7 @@
   [hidden] { display: none !important; }
 
   #stage { position: fixed; inset: 0; }
-  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; cursor: pointer; -webkit-user-select: none; user-select: none; }
   #video.mirror { transform: scaleX(-1); }
   #overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
   #layer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
@@ -216,7 +216,7 @@
   <div class="sheet">
     <h1>🔍 AR Lens</h1>
     <p class="hint" style="margin:0">ส่องวัตถุด้วยกล้อง แล้วแตะที่กรอบเพื่อดูข้อมูล</p>
-    <div class="chip" style="display:inline-block;margin-top:8px">เวอร์ชัน 4 · แตะกรอบเพื่อเปิดข้อมูล · รองรับมือถือ</div>
+    <div class="chip" style="display:inline-block;margin-top:8px">เวอร์ชัน 5 · แตะกรอบเพื่อเปิดข้อมูล · รองรับมือถือ</div>
     <div class="steps">
       ① <b>ส่องวัตถุ</b> เช่น ขวด แก้ว มือถือ หนังสือ → จะมี<b>กรอบ</b>ขึ้นรอบวัตถุที่ AI มองเห็น<br>
       <span class="pc-only">② <b>แตะ / คลิก / จีบนิ้วในกรอบ</b> ของวัตถุที่สนใจ → การ์ดข้อมูลจะเด้งขึ้นข้างวัตถุ<br>
@@ -384,8 +384,10 @@ function ensureHands() {
 
 async function startCamera() {
   if (video.srcObject) video.srcObject.getTracks().forEach((t) => t.stop());
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
-    video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } } });
+  const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { exact: facing }, ...size } }); }
+  catch { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: facing, ...size } }); }
   video.srcObject = stream; await video.play();
   const s = stream.getVideoTracks()[0].getSettings();
   mirror = (s.facingMode || facing) !== "environment";
@@ -759,10 +761,15 @@ function overUI(p) { const e = document.elementFromPoint(p.x, p.y); return !!(e 
 // mouse / touch: tap inside a frame to show its info card
 let mousePt = null;
 addEventListener("pointermove", (e) => { mousePt = e.pointerType === "mouse" ? { x: e.clientX, y: e.clientY } : null; });
-addEventListener("click", (e) => {
-  if (!running || (train && train.stage === "capture") || e.target.closest(UI_SEL)) return;
+// use pointer events (iPhone Safari does not fire "click" when tapping the camera image)
+let tapStart = null;
+addEventListener("pointerdown", (e) => { tapStart = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId }; }, true);
+addEventListener("pointerup", (e) => {
+  const s = tapStart; tapStart = null;
+  if (!s || e.pointerId !== s.id || performance.now() - s.t > 700 || Math.hypot(e.clientX - s.x, e.clientY - s.y) > 25) return;
+  if (!running || (train && train.stage === "capture") || (e.target.closest && e.target.closest(UI_SEL))) return;
   const t = trackAt({ x: e.clientX, y: e.clientY }); if (t) openCard(t);
-});
+}, true);
 // drag a detail popup by its header with finger / mouse
 let pdrag = null;
 popLayer.addEventListener("pointerdown", (e) => {
@@ -953,7 +960,7 @@ function loop() {
   render(now);
   if (now - lastStatus > 500) {
     lastStatus = now;
-    $("#status").textContent = (settings.pinch ? `✋ ${nh} มือ · ` : "👆 โหมดแตะจอ · ") + `📦 ${tracks.length} วัตถุ · ` +
+    $("#status").textContent = "v5 · " + (settings.pinch ? `✋ ${nh} มือ · ` : "👆 โหมดแตะจอ · ") + `📦 ${tracks.length} วัตถุ · ` +
       (training ? `🧠 กำลังเทรน ${Math.round(trainPct * 100)}%` : `🧠 สอนไว้ ${items.length}`);
   }
 }
