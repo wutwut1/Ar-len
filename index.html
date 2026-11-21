@@ -99,7 +99,14 @@
   @keyframes popIn { from { opacity: 0; transform: translateY(14px) scale(.85); } to { opacity: 1; transform: none; } }
   @keyframes popOut { to { opacity: 0; transform: scale(.9); } }
   @keyframes flash { 30% { box-shadow: 0 0 0 3px var(--violet), 0 0 40px rgba(155,123,255,.7); } }
-  .p-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; cursor: grab; border-bottom: 1px solid var(--line); }
+  .p-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; cursor: grab; border-bottom: 1px solid var(--line); touch-action: none; }
+  /* touch: no double-tap zoom, visible press feedback (phones have no hover) */
+  html, body, button, .card, .pop { touch-action: manipulation; }
+  .hit:active { transform: scale(.94); box-shadow: 0 0 0 2px var(--cyan), 0 0 24px rgba(69,227,255,.55); }
+  .xbtn:active { box-shadow: 0 0 0 2px var(--red), 0 0 22px rgba(255,93,122,.5); }
+  .touch .xbtn { width: 44px; height: 44px; }
+  .touch .more { padding: 14px; }
+  .touch .pc-only, html:not(.touch) .touch-only { display: none; }
   .p-head .tag { font-size: 10px; letter-spacing: 1.5px; color: var(--violet); font-weight: 800; }
   .p-body { padding: 12px 14px 14px; overflow: auto; display: grid; gap: 8px; }
   .fact { padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.05); border-left: 3px solid var(--violet); }
@@ -208,12 +215,16 @@
 <div id="start">
   <div class="sheet">
     <h1>🔍 AR Lens</h1>
-    <p class="hint" style="margin:0">ส่องวัตถุด้วยกล้อง แล้วข้อมูลจะลอยขึ้นมาข้างๆ</p>
+    <p class="hint" style="margin:0">ส่องวัตถุด้วยกล้อง แล้วแตะที่กรอบเพื่อดูข้อมูล</p>
+    <div class="chip" style="display:inline-block;margin-top:8px">เวอร์ชัน 4 · แตะกรอบเพื่อเปิดข้อมูล · รองรับมือถือ</div>
     <div class="steps">
       ① <b>ส่องวัตถุ</b> เช่น ขวด แก้ว มือถือ หนังสือ → จะมี<b>กรอบ</b>ขึ้นรอบวัตถุที่ AI มองเห็น<br>
-      ② <b>แตะ / จีบนิ้วในกรอบ</b> ของวัตถุที่สนใจ → การ์ดข้อมูลจะเด้งขึ้นข้างวัตถุ<br>
+      <span class="pc-only">② <b>แตะ / คลิก / จีบนิ้วในกรอบ</b> ของวัตถุที่สนใจ → การ์ดข้อมูลจะเด้งขึ้นข้างวัตถุ<br>
       ③ <b>จีบนิ้วโป้ง + นิ้วชี้</b> ตรงปุ่ม เพื่อกด (ใช้เมาส์/แตะจอก็ได้)<br>
-      ④ กด <b>“รายละเอียดเพิ่มเติม”</b> เพื่อดูข้อมูลเชิงลึก · จีบค้างที่หัวการ์ดเพื่อลาก<br>
+      ④ กด <b>“รายละเอียดเพิ่มเติม”</b> เพื่อดูข้อมูลเชิงลึก · จีบค้างที่หัวการ์ดเพื่อลาก<br></span>
+      <span class="touch-only">② <b>แตะในกรอบ</b> ของวัตถุที่สนใจ → การ์ดข้อมูลจะเด้งขึ้นข้างวัตถุ<br>
+      ③ <b>แตะ “รายละเอียดเพิ่มเติม”</b> เพื่อดูข้อมูลเชิงลึก · ใช้นิ้วลากหัวการ์ดเพื่อย้าย<br>
+      ④ ใช้<b>กล้องหลัง</b>อัตโนมัติ · กด 🔄 เพื่อสลับกล้อง<br></span>
       ⑤ กด <b>＋ สอนวัตถุ</b> เพื่อสอนให้รู้จักของของคุณเอง (ยี่ห้อ ขนาด เจ้าของบริษัท ฯลฯ)
     </div>
     <button class="btn primary" id="btnStart" style="width:100%;padding:14px;font-size:16px">เปิดกล้อง &amp; เริ่มใช้งาน</button>
@@ -255,6 +266,7 @@
     <div class="setting">ความเข้มงวดในการจำ
       <input type="range" id="sTh" min="0.55" max="0.95" step="0.01"><b id="sThV"></b></div>
     <div class="setting"><label><input type="checkbox" id="sGeneric"> แสดงการ์ดของวัตถุทั่วไปที่ยังไม่ได้สอน (ขวด แก้ว มือถือ ฯลฯ)</label></div>
+    <div class="setting"><label><input type="checkbox" id="sPinch"> ใช้ท่าจีบนิ้วควบคุม (ปิดไว้ = แตะจออย่างเดียว เหมาะกับมือถือ)</label></div>
     <div class="setting"><label><input type="checkbox" id="sSkel"> แสดงโครงมือ</label></div>
     <div class="actions">
       <button class="btn small" id="libTrain">🧠 เทรนใหม่</button>
@@ -280,7 +292,10 @@ const layer = $("#layer"), popLayer = $("#popups");
 
 /* ====================== storage ====================== */
 const LS_ITEMS = "arlens.items.v1", LS_SET = "arlens.settings.v1";
-let settings = Object.assign({ th: 0.78, generic: true, skel: true }, JSON.parse(localStorage.getItem(LS_SET) || "{}"));
+// phones / tablets: control everything by touching the screen; hand-pinch is off by default there
+const isTouch = matchMedia("(pointer: coarse)").matches || "ontouchstart" in window;
+document.documentElement.classList.toggle("touch", isTouch);
+let settings = Object.assign({ th: 0.78, generic: true, skel: true, pinch: !isTouch },JSON.parse(localStorage.getItem(LS_SET) || "{}"));
 let items = [];
 function saveSettings() { localStorage.setItem(LS_SET, JSON.stringify(settings)); }
 
@@ -317,7 +332,7 @@ function saveBg() {
 }
 
 /* ====================== geometry ====================== */
-let W = 0, H = 0, mirror = true, facing = "user";
+let W = 0, H = 0, mirror = true, facing = isTouch ? "environment" : "user";   // phones start with the back camera
 function resize() {
   const dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
   cvs.width = W * dpr; cvs.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -352,13 +367,19 @@ let vision;
 async function loadModels() {
   loadMsg("กำลังโหลดระบบ AI…");
   vision = await FilesetResolver.forVisionTasks(WASM_URL);
-  loadMsg("กำลังโหลดโมเดลตรวจจับมือ… (1/3)");
-  hands = await createWithFallback(HandLandmarker, { baseOptions: { modelAssetPath: HAND_MODEL }, runningMode: "VIDEO", numHands: 2,
-    minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 });
-  loadMsg("กำลังโหลดโมเดลตรวจจับวัตถุ… (2/3)");
+  loadMsg("กำลังโหลดโมเดลตรวจจับวัตถุ… (1/2)");
   detector = await createWithFallback(ObjectDetector, { baseOptions: { modelAssetPath: DET_MODEL }, runningMode: "VIDEO", scoreThreshold: 0.2, maxResults: 8 });
-  loadMsg("กำลังโหลดโมเดลจดจำวัตถุ… (3/3)");
+  loadMsg("กำลังโหลดโมเดลจดจำวัตถุ… (2/2)");
   embedder = await ImageEmbedder.createFromOptions(vision, { baseOptions: { modelAssetPath: EMB_MODEL, delegate: "CPU" }, runningMode: "IMAGE", l2Normalize: true, quantize: false });
+  if (settings.pinch) { loadMsg("กำลังโหลดโมเดลตรวจจับมือ…"); await ensureHands(); }
+}
+// hand model is only loaded when pinch control is on (saves data + battery on phones)
+let handsLoading = null;
+function ensureHands() {
+  if (hands) return Promise.resolve(hands);
+  return handsLoading || (handsLoading = createWithFallback(HandLandmarker, { baseOptions: { modelAssetPath: HAND_MODEL }, runningMode: "VIDEO", numHands: 2,
+    minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5 })
+    .then((h) => (hands = h)).catch((e) => { handsLoading = null; throw e; }));
 }
 
 async function startCamera() {
@@ -600,7 +621,7 @@ function trackAt(p) {
   let best = null, ba = Infinity;
   for (const t of tracks) {
     if (t.dying) continue;
-    const b = rV2S(t.rv), pad = 10;
+    const b = rV2S(t.rv), pad = isTouch ? 24 : 10;   // bigger tap area for fingers
     if (inside(p, { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 }) && b.w * b.h < ba) { ba = b.w * b.h; best = t; }
   }
   return best;
@@ -742,6 +763,22 @@ addEventListener("click", (e) => {
   if (!running || (train && train.stage === "capture") || e.target.closest(UI_SEL)) return;
   const t = trackAt({ x: e.clientX, y: e.clientY }); if (t) openCard(t);
 });
+// drag a detail popup by its header with finger / mouse
+let pdrag = null;
+popLayer.addEventListener("pointerdown", (e) => {
+  const head = e.target.closest(".p-head"); if (!head || e.target.closest("button")) return;
+  const pop = head.closest(".pop");
+  pdrag = { el: pop, id: e.pointerId, ox: e.clientX - pop.offsetLeft, oy: e.clientY - pop.offsetTop };
+  pop.classList.add("dragging"); head.setPointerCapture?.(e.pointerId); e.preventDefault();
+});
+addEventListener("pointermove", (e) => {
+  if (!pdrag || e.pointerId !== pdrag.id) return;
+  const p = pdrag.el;
+  p.style.left = clamp(e.clientX - pdrag.ox, 0, W - p.offsetWidth) + "px";
+  p.style.top = clamp(e.clientY - pdrag.oy, 50, H - 60) + "px";
+});
+const endPDrag = (e) => { if (pdrag && e.pointerId === pdrag.id) { pdrag.el.classList.remove("dragging"); pdrag = null; } };
+addEventListener("pointerup", endPDrag); addEventListener("pointercancel", endPDrag);
 function dragAt(p) { const e = document.elementFromPoint(p.x, p.y); return e && e.closest(".drag") && e.closest(".pop"); }
 function pressFx(btn) { btn.classList.remove("pressed"); void btn.offsetWidth; btn.classList.add("pressed"); }
 
@@ -754,13 +791,14 @@ function processHands(now) {
       const pts = lm.map((q) => v2s(q.x * g.vw, q.y * g.vh, g));
       const palm = Math.max(20, dist(pts[0], pts[9])), pd = dist(pts[4], pts[8]), ratio = pd / palm;
       const raw = { x: (pts[4].x + pts[8].x) / 2, y: (pts[4].y + pts[8].y) / 2 };
-      const st = HSTATE[key] || (HSTATE[key] = { cur: raw, pinch: false, fx: [] });
+      const st = HSTATE[key] || (HSTATE[key] = { cur: raw, pinch: false, fx: [], armed: false });
       const k = st.pinch ? 0.35 : 0.55;
       st.cur = { x: lerp(st.cur.x, raw.x, k), y: lerp(st.cur.y, raw.y, k) };
       st.pts = pts; st.ratio = ratio; st.t = now;
+      if (ratio > 0.45) st.armed = true;          // a pinch only counts after the fingers were seen open (not a hand already holding something)
 
       if (!st.pinch && ratio > 0.42) { const h = hitAt(st.cur); if (h) { st.lastHover = h; st.lastHoverT = now; } }
-      if (!st.pinch && ratio < 0.3) {                         // pinch start
+      if (!st.pinch && st.armed && ratio < 0.3) {             // pinch start
         st.pinch = true; st.fx.push({ x: st.cur.x, y: st.cur.y, t: now });
         let target = hitAt(st.cur);
         if (!target && st.lastHover && now - st.lastHoverT < 350 && document.contains(st.lastHover)) target = st.lastHover;
@@ -768,11 +806,14 @@ function processHands(now) {
         else {
           const pop = dragAt(st.cur);
           if (pop) { st.drag = { el: pop, ox: st.cur.x - pop.offsetLeft, oy: st.cur.y - pop.offsetTop }; pop.classList.add("dragging"); }
-          else if (!overUI(st.cur)) { const t = trackAt(st.cur); if (t) openCard(t); }   // pinch inside a frame → show info
+          else if (!overUI(st.cur)) { const t = trackAt(st.cur); if (t) st.tap = { t, time: now, p: { ...st.cur } }; }
         }
       } else if (st.pinch && ratio > 0.45) {                   // release
         st.pinch = false;
         if (st.drag) { st.drag.el.classList.remove("dragging"); st.drag = null; }
+        // quick pinch-and-release inside the same frame = select it (holding an object or waving does not count)
+        const tp = st.tap; st.tap = null;
+        if (tp && now - tp.time < 700 && dist(st.cur, tp.p) < 60 && !tp.t.dying && trackAt(st.cur) === tp.t) openCard(tp.t);
       }
       if (st.drag) {
         const e = st.drag.el;
@@ -903,7 +944,7 @@ function loop() {
   if (video.currentTime !== lastVT) {
     lastVT = video.currentTime;
     try {
-      handRes = hands.detectForVideo(video, now);
+      handRes = settings.pinch && hands ? hands.detectForVideo(video, now) : null;
       if (now - lastRec > 180) { lastRec = now; recognize(now); }
     } catch (e) { console.warn(e); }
   }
@@ -912,7 +953,7 @@ function loop() {
   render(now);
   if (now - lastStatus > 500) {
     lastStatus = now;
-    $("#status").textContent = `✋ ${nh} มือ · 📦 ${tracks.length} วัตถุ · ` +
+    $("#status").textContent = (settings.pinch ? `✋ ${nh} มือ · ` : "👆 โหมดแตะจอ · ") + `📦 ${tracks.length} วัตถุ · ` +
       (training ? `🧠 กำลังเทรน ${Math.round(trainPct * 100)}%` : `🧠 สอนไว้ ${items.length}`);
   }
 }
@@ -1061,7 +1102,7 @@ function openLib() {
   }
   renderModelStat();
   $("#sTh").value = settings.th; $("#sThV").textContent = Math.round(settings.th * 100) + "%";
-  $("#sGeneric").checked = settings.generic; $("#sSkel").checked = settings.skel;
+  $("#sGeneric").checked = settings.generic; $("#sSkel").checked = settings.skel; $("#sPinch").checked = settings.pinch;
   $("#libModal").hidden = false;
 }
 $("#btnLib").onclick = openLib;
@@ -1071,6 +1112,13 @@ setInterval(() => { if (training && !$("#libModal").hidden) renderModelStat(); }
 $("#sTh").oninput = (e) => { settings.th = +e.target.value; $("#sThV").textContent = Math.round(settings.th * 100) + "%"; saveSettings(); };
 $("#sGeneric").onchange = (e) => { settings.generic = e.target.checked; saveSettings(); };
 $("#sSkel").onchange = (e) => { settings.skel = e.target.checked; saveSettings(); };
+$("#sPinch").onchange = (e) => {
+  settings.pinch = e.target.checked; saveSettings();
+  if (settings.pinch && !hands) {
+    toast("กำลังโหลดโมเดลตรวจจับมือ…");
+    ensureHands().then(() => toast("✋ ใช้ท่าจีบนิ้วได้แล้ว")).catch(() => { toast("โหลดโมเดลมือไม่สำเร็จ"); settings.pinch = false; e.target.checked = false; saveSettings(); });
+  }
+};
 $("#libExport").onclick = () => {
   const blob = new Blob([JSON.stringify(items.map(({ _vecs, ...r }) => r))], { type: "application/json" });
   const a = el("a"); a.href = URL.createObjectURL(blob); a.download = "ar-lens-objects.json"; a.click(); URL.revokeObjectURL(a.href);
